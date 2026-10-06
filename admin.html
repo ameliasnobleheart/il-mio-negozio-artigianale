@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Gestione Negozio</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f4f4f9; }
+        .box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input, textarea { width: 100%; padding: 10px; margin: 8px 0 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #218838; }
+        .prodotto-item { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 10px 0; }
+        .btn-danger { background: #dc3545; padding: 5px 10px; font-size: 14px; }
+        .btn-danger:hover { background: #c82333; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- SCHERMATA DI ACCESSO -->
+    <div id="login-box" class="box">
+        <h2>Accesso Area Admin</h2>
+        <p>Inserisci il tuo Token di GitHub (quello che hai generato prima) per accedere:</p>
+        <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+        <button onclick="salvaToken()">Accedi</button>
+    </div>
+
+    <!-- SCHERMATA GESTIONE PRODOTTI -->
+    <div id="admin-box" class="box hidden">
+        <h2>Aggiungi Nuovo Prodotto</h2>
+        <label>Nome Prodotto:</label>
+        <input type="text" id="titolo" placeholder="Es. Braccialetto di perle">
+
+        <label>Prezzo (€):</label>
+        <input type="number" id="prezzo" step="0.01" placeholder="12.50">
+
+        <label>Descrizione:</label>
+        <textarea id="descrizione" placeholder="Breve descrizione dell'oggetto..."></textarea>
+
+        <label>Link Immagine (URL):</label>
+        <input type="text" id="immagine" placeholder="https://via.placeholder.com/300">
+
+        <button onclick="aggiungiProdotto()">Salva e Pubblica</button>
+        <hr style="margin: 30px 0;">
+        
+        <h3>Prodotti Attuali</h3>
+        <div id="lista-admin">Caricamento...</div>
+        
+        <br>
+        <button onclick="logout()" style="background:#6c757d; font-size:14px;">Esci / Cambia Token</button>
+    </div>
+
+    <script>
+        // CONFIGURA QUI IL TUO NOME UTENTE E NOME REPOSITORY DI GITHUB
+        // Sostituisci 'il tuo nome utente' e 'nome repository di github' con i tuoi dati reali!
+        const GITHUB_USER = "ameliasnobleheart";
+        const GITHUB_REPO = "ilmionegozioartigianale";
+        const FILE_PATH = "prodotti.json";
+
+        let token = localStorage.getItem("github_token");
+        let shaFile = ""; // Necessario a GitHub per aggiornare i file
+
+        if (token) {
+            document.getElementById("token-input").value = token;
+            mostraAdmin();
+        }
+
+        function salvaToken() {
+            const val = document.getElementById("token-input").value.trim();
+            if(!val) return alert("Inserisci un token valido!");
+            localStorage.setItem("github_token", val);
+            token = val;
+            mostraAdmin();
+        }
+
+        function logout() {
+            localStorage.removeItem("github_token");
+            location.reload();
+        }
+
+        function mostraAdmin() {
+            document.getElementById("login-box").classList.add("hidden");
+            document.getElementById("admin-box").classList.remove("hidden");
+            caricaProdottiAdmin();
+        }
+
+        async function caricaProdottiAdmin() {
+            try {
+                let res = await fetch(`https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${FILE_PATH}`);
+                let data = await res.json();
+                shaFile = data.sha; // Salviamo lo SHA fondamentale per le modifiche
+                
+                let decodedContent = JSON.parse(decodeURIComponent(escape(atob(data.content))));
+                let html = "";
+                
+                if(decodedContent.length === 0) {
+                    html = "<p>Nessun prodotto presente.</p>";
+                } else {
+                    decodedContent.forEach((p, index) => {
+                        html += `
+                            <div class="prodotto-item">
+                                <div><strong>${p.titolo}</strong> - €${p.prezzo}</div>
+                                <button class="btn-danger" onclick="eliminaProdotto(${index})">Elimina</button>
+                            </div>
+                        `;
+                    });
+                }
+                document.getElementById("lista-admin").innerHTML = html;
+                window.prodottiCorrenti = decodedContent;
+            } catch(e) {
+                alert("Errore di connessione a GitHub. Controlla che username e nome repository nel codice siano corretti!");
+                console.error(e);
+            }
+        }
+
+        async function aggiungiProdotto() {
+            let titolo = document.getElementById("titolo").value;
+            let prezzo = parseFloat(document.getElementById("prezzo").value);
+            let descrizione = document.getElementById("descrizione").value;
+            let immagine = document.getElementById("immagine").value;
+
+            if(!titolo || isNaN(prezzo)) {
+                alert("Inserisci almeno titolo e prezzo valido.");
+                return;
+            }
+
+            let nuovoOggetto = {
+                id: Date.now(),
+                titolo,
+                prezzo,
+                descrizione: descrizione || "",
+                immagine: immagine || "https://via.placeholder.com/300"
+            };
+
+            window.prodottiCorrenti.push(nuovoOggetto);
+            await aggiornaFileGitHub(window.prodottiCorrenti, "Aggiunto nuovo prodotto");
+        }
+
+        async function eliminaProdotto(index) {
+            if(!confirm("Vuoi davvero eliminare questo prodotto?")) return;
+            window.prodottiCorrenti.splice(index, 1);
+            await aggiornaFileGitHub(window.prodottiCorrenti, "Eliminato prodotto");
+        }
+
+        async function aggiornaFileGitHub(nuovoArray, messaggio) {
+            let contenutoAggiornato = btoa(unescape(encodeURIComponent(JSON.stringify(nuovoArray, null, 2))));
+            
+            let response = await fetch(`https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${FILE_PATH}`, {
+                method: "PUT",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    message: messaggio,
+                    content: contenutoAggiornato,
+                    sha: shaFile
+                })
+            });
+
+            if(response.ok) {
+                alert("Modifica salvata con successo sul sito!");
+                location.reload();
+            } else {
+                let err = await response.json();
+                alert("Errore durante il salvataggio: " + err.message);
+            }
+        }
+    </script>
+</body>
+</html>
