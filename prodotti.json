@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "titolo": "Anello con Pietra Dura",
+    "prezzo": 15.00,
+    "descrizione": "Anello artigianale in ottone e pietra naturale.",
+    "immagine": "https://via.placeholder.com/300"
+  },
+  {
+    "id": 2,
+    "titolo": "Collana Minimal",
+    "prezzo": 22.50,
+    "descrizione": "Collana sottile in acciaio inossidabile.",
+    "immagine": "https://via.placeholder.com/300"
+  }
+]
